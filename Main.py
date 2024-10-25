@@ -4,12 +4,28 @@ import yara
 import time
 
 # Path to log file
-LOG_FILE = 'malicious_files_log.txt'
+LOG_FILE = r'C:\\Users\\dtmin\\OneDrive\Desktop\\Projects\\GitRepos\\Mortorium\\logfiles\\malicious_files_log.txt'
 
 # YARA rules file path
 YARA_RULES_PATH = 'obfuscation_rules.yar'
 
-# Regular expressions to detect obfuscated code patterns
+# List of directories to ignore during the scan
+IGNORED_DIRECTORIES = [
+    'C:\\$Recycle.Bin',
+    'C:\\ProgramData',
+    'C:\\Windows',
+    'C:\\Program Files',
+    'C:\\Program Files (x86)',
+    'C:\\Users\\dtmin\\.android',
+    'C:\\Users\\dtmin\\.gradle',
+    'C:\\Users\\dtmin\\.git',
+    'C:\\Users\\dtmin\\.vscode',
+    'C:\\Users\dtmin\AndroidStudioProjects',
+    'C:\\Users\\dtmin\\AppData',
+
+]
+
+# Regular expressions for detecting obfuscation patterns
 OBFUSCATION_PATTERNS = [
     r'(?:\\x[0-9A-Fa-f]{2})+',  # Hex-encoded characters
     r'(?:\\u[0-9A-Fa-f]{4})+',  # Unicode escape sequences
@@ -21,6 +37,18 @@ OBFUSCATION_PATTERNS = [
     r'(String\.fromCharCode\([0-9,]+\))',  # String.fromCharCode() usage
     r'(unescape\([^\)]+\))',  # unescape() function
     r'(\)\s*\{[^\}]+\})',     # Excessive grouping or anonymous functions
+]
+
+# Regular expressions for detecting potentially dangerous functions
+DANGEROUS_FUNCTIONS = [
+    r'cmd\.exe',               # Windows command execution
+    r'powershell',             # PowerShell execution
+    r'eval\(',                 # Possible code execution
+    r'base64_decode\(',        # Base64 decoding (often used in malware)
+    r'\bexec\b',               # Dangerous exec function
+    r'<script>',               # Embedded script in files
+    r'system\(',               # System command execution
+    r'shell_exec\(',           # Shell command execution
 ]
 
 # Function to load and compile YARA rules
@@ -35,6 +63,13 @@ def load_yara_rules():
 # Function to check for obfuscation patterns using regex
 def check_regex_obfuscation(file_contents):
     for pattern in OBFUSCATION_PATTERNS:
+        if re.search(pattern, file_contents):
+            return True
+    return False
+
+# Function to check for dangerous function patterns using regex
+def check_dangerous_functions(file_contents):
+    for pattern in DANGEROUS_FUNCTIONS:
         if re.search(pattern, file_contents):
             return True
     return False
@@ -60,6 +95,11 @@ def scan_file(file_path, yara_rules):
             log_malicious_file(file_path, "Regex Obfuscation Detected")
             return True
 
+        # Check for dangerous functions using regex patterns
+        if check_dangerous_functions(file_contents):
+            log_malicious_file(file_path, "Dangerous Function Detected")
+            return True
+
         # Check for obfuscation using YARA
         if yara_rules and scan_file_with_yara(file_path, yara_rules):
             log_malicious_file(file_path, "YARA Obfuscation Detected")
@@ -70,10 +110,14 @@ def scan_file(file_path, yara_rules):
     
     return False
 
-# Function to scan a directory recursively
+# Function to scan a directory recursively, excluding specified directories
 def scan_directory(directory, yara_rules):
     malicious_files = []
     for root, dirs, files in os.walk(directory):
+        # Exclude ignored directories
+        if any(ignored_dir in root for ignored_dir in IGNORED_DIRECTORIES):
+            continue
+
         for file in files:
             file_path = os.path.join(root, file)
             if scan_file(file_path, yara_rules):
@@ -86,6 +130,9 @@ def log_malicious_file(file_path, issue_type):
     with open(LOG_FILE, 'a') as log_file:
         log_file.write(f"{time.ctime()}: {issue_type} - {file_path}\n")
     print(f"{issue_type}: {file_path}")
+
+# Ensure the log directory exists
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
 # Entry point of the script
 if __name__ == '__main__':
